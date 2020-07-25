@@ -35,7 +35,7 @@ def image_loader(image_name):
 
 # Store info about the images. We need two images, one for style and the other for content.
 image_dir = Path("./images")
-style_image = image_loader(image_dir/'pixelart.jpg')
+style_image = image_loader(image_dir/'starry.jpg')
 content_image = image_loader(image_dir/'anjan.JPG')
 
 assert style_image.size() == content_image.size()
@@ -61,11 +61,11 @@ imshow(content_image)
 class ContentLoss(nn.Module):
     def __init__(self, target):
         super(ContentLoss, self).__init__()
-        # We detatch it because the loss calculation step will throw errors otherwise. 
-        self.target = target.detatch()
+        # We detach it because the loss calculation step will throw errors otherwise. 
+        self.target = target.detach()
 
     def forward(self, input):
-        loss = F.mse_loss(input, self.target)
+        self.loss = F.mse_loss(input, self.target)
         return input
 
 
@@ -111,4 +111,129 @@ class Normalization(nn.Module):
 content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
+def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
+                                style_image, content_image, 
+                                content_layers=content_layers_default,
+                                style_layers=style_layers_default):
+    
+    cnn = copy.deepcopy(cnn)
+
+    #Normalization Module
+    normalization = Normalization(normalization_mean, normalization_std).to(device)
+
+    #To store the losses
+    content_losses = []
+    style_losses = []
+
+    #Add normalization layer to the cnn. This assumes that the cnn is created by nn.Sequential
+    model = nn.Sequential(normalization)
+
+    i=0 # We increment everytime we see a conv layer
+    for layer in cnn.children():
+        if isinstance(layer, nn.Conv2d):
+            i += 1
+            name = 'conv_{}'.format(i)
+
+        elif isinstance(layer, nn.ReLU):
+            name = 'relu_{}'.format(i)
+            layer = nn.ReLU(inplace=False)
+
+        elif isinstance(layer, nn.MaxPool2d):
+            name = 'pool_{}'.format(i)
+
+        elif isinstance(layer, nn.BatchNorm2d):
+            name = 'bn_{}'.format(i)
+
+        else:
+            raise RuntimeError('Unrecognized Layer: {}'.format(layer.__class__.__name__))
+
+        model.add_module(name, layer)
+
+        if name in content_layers:
+            # Add contentLoss
+            target = model(content_image).detach()
+            content_loss = ContentLoss(target)
+            model.add_module("content_loss_{}".format(i), content_loss)
+            content_losses.append(content_loss)
+        
+        if name in style_layers:
+            # Add style loss
+            target_feature = model(style_image).detach()
+            style_loss = StyleLoss(target_feature)
+            model.add_module("style_loss_{}".format(i), style_loss)
+            style_losses.append(style_loss)
+    
+    # Now we don't care about the layers after the style and content losses. So we remove them
+    for i in range(len(model) - 1, -1 , -1):
+        if isinstance(model[i], ContentLoss) or isinstance(model[i], StyleLoss):
+            break
+    
+    model = model[:i+1]
+
+    return model, style_losses, content_losses
+
+
+
+input_image = content_image.clone()
+
+def get_input_optimizer(input_image):
+    optimizer = optim.LBFGS([input_image.requires_grad_()])
+    return optimizer
+
+
+def run_style_transfer(model, style_losses, content_losses, input_image, 
+                        num_steps=300, style_weight=100000, content_weight=100):
+    
+    optimizer = get_input_optimizer(input_image)
+
+    print("Optimizing...")
+    run = [0]
+
+    while(run[0] <= num_steps):
+
+        def closure():
+            input_image.data.clamp_(0, 1)
+
+            optimizer.zero_grad()
+            model(input_image)
+            
+            style_score = 0
+            content_score = 0
+
+            for style_layer in style_losses:
+                style_score += (1/5)*style_layer.loss
+            
+            for content_layer in content_losses:
+                content_score += content_layer.loss
+
+            style_score *= style_weight
+            content_score *= content_weight
+
+            loss = style_score + content_score
+            loss.backward()
+
+            run[0] += 1
+            if run[0]%50 == 0:
+                print("run {}:".format(run[0]))
+                print("Style loss : {:4f}, Content Loss : {:4f}".format(style_score.item(), content_score.item()))
+                print()
+
+            return style_score+content_score
+        
+        optimizer.step(closure)
+    
+    input_image.data.clamp_(0, 1)
+
+    return input_image
+
+
+
+print("Building the style transfer model...")
+
+model, style_losses, content_losses = get_style_model_and_losses(cnn, cnn_normalization_mean, cnn_normalization_std, style_image, content_image)
+
+output = run_style_transfer(model, style_losses, content_losses, input_image, num_steps=300)
+
+
+imshow(output, title="Final image")
 
