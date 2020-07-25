@@ -182,7 +182,7 @@ def get_input_optimizer(input_image):
 
 
 def run_style_transfer(model, style_losses, content_losses, input_image, 
-                        num_steps=300, style_weight=100000, content_weight=100):
+                        num_steps=300, style_weight=1000000, content_weight=1):
     
     optimizer = get_input_optimizer(input_image)
 
