@@ -23,7 +23,7 @@ imsize = 128
 
 # Preprocess the image i.e. Resize and convert into Tensor
 
-loader = transforms.Compose([transforms.Resize(imsize), transforms.ToTensor()])
+loader = transforms.Compose([transforms.Resize((imsize, imsize)), transforms.ToTensor()])
 
 
 # Helper function to load and process image
@@ -32,4 +32,14 @@ def image_loader(image_name):
     image = loader(image).unsqueeze(0)
     return image.to(device, torch.float)
 
+
 # Store info about the images. We need two images, one for style and the other for content.
+image_dir = Path("./images")
+style_image = image_loader(image_dir/'pixelart.jpg')
+content_image = image_loader(image_dir/'anjan.JPG')
+
+assert style_image.size() == content_image.size()
+
+
+
+
