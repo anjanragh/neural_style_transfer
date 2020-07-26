@@ -16,6 +16,15 @@ from pathlib import Path
 
 import numpy as np
 
+import math
+import streamlit as st
+
+st.title("Neural Style Transfer Demo!")
+
+# Add a placeholder
+latest_iteration = st.empty()
+bar = st.progress(50)
+
 # Create device so that it uses cuda if available. If not, just use cpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,7 +32,8 @@ imsize = 128
 
 # Preprocess the image i.e. Resize and convert into Tensor
 
-loader = transforms.Compose([transforms.Resize((imsize, imsize)), transforms.ToTensor()])
+loader = transforms.Compose(
+    [transforms.Resize((imsize, imsize)), transforms.ToTensor()])
 
 
 # Helper function to load and process image
@@ -46,22 +56,27 @@ unloader = transforms.ToPILImage()
 plt.ion()
 
 # Helper function to show the tensor as an image
+
+
 def imshow(tensor, title=None):
     image = tensor.cpu().clone()
     image = image.squeeze(0)
     image = unloader(image)
     plt.imshow(image)
+    st.image(image, width=None)
     if title is not None:
         plt.title(title)
     plt.pause(0.01)
 
+
 imshow(style_image)
 imshow(content_image)
+
 
 class ContentLoss(nn.Module):
     def __init__(self, target):
         super(ContentLoss, self).__init__()
-        # We detach it because the loss calculation step will throw errors otherwise. 
+        # We detach it because the loss calculation step will throw errors otherwise.
         self.target = target.detach()
 
     def forward(self, input):
@@ -78,6 +93,7 @@ def gram_matrix(input):
 
     return G.div(a*b*c*d)
 
+
 class StyleLoss(nn.Module):
     def __init__(self, target_feature):
         super(StyleLoss, self).__init__()
@@ -89,10 +105,11 @@ class StyleLoss(nn.Module):
         self.loss = F.mse_loss(G, self.target)
         return input
 
+
 # Import the model. The paper uses VGG19 which is what I am going to use
 cnn = models.vgg19(pretrained=True).features.to(device).eval()
 
-#VGG normalized for mean and std from ImageNet. This is a configuration often used for image normalization.
+# VGG normalized for mean and std from ImageNet. This is a configuration often used for image normalization.
 cnn_normalization_mean = torch.Tensor([0.485, 0.456, 0.406]).to(device)
 cnn_normalization_std = torch.Tensor([0.229, 0.224, 0.225]).to(device)
 
@@ -108,27 +125,30 @@ class Normalization(nn.Module):
     def forward(self, img):
         return (img - self.mean)/self.std
 
+
 content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
+
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
-                                style_image, content_image, 
-                                content_layers=content_layers_default,
-                                style_layers=style_layers_default):
-    
+                               style_image, content_image,
+                               content_layers=content_layers_default,
+                               style_layers=style_layers_default):
+
     cnn = copy.deepcopy(cnn)
 
-    #Normalization Module
-    normalization = Normalization(normalization_mean, normalization_std).to(device)
+    # Normalization Module
+    normalization = Normalization(
+        normalization_mean, normalization_std).to(device)
 
-    #To store the losses
+    # To store the losses
     content_losses = []
     style_losses = []
 
-    #Add normalization layer to the cnn. This assumes that the cnn is created by nn.Sequential
+    # Add normalization layer to the cnn. This assumes that the cnn is created by nn.Sequential
     model = nn.Sequential(normalization)
 
-    i=0 # We increment everytime we see a conv layer
+    i = 0  # We increment everytime we see a conv layer
     for layer in cnn.children():
         if isinstance(layer, nn.Conv2d):
             i += 1
@@ -145,7 +165,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             name = 'bn_{}'.format(i)
 
         else:
-            raise RuntimeError('Unrecognized Layer: {}'.format(layer.__class__.__name__))
+            raise RuntimeError('Unrecognized Layer: {}'.format(
+                layer.__class__.__name__))
 
         model.add_module(name, layer)
 
@@ -155,38 +176,39 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             content_loss = ContentLoss(target)
             model.add_module("content_loss_{}".format(i), content_loss)
             content_losses.append(content_loss)
-        
+
         if name in style_layers:
             # Add style loss
             target_feature = model(style_image).detach()
             style_loss = StyleLoss(target_feature)
             model.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
-    
+
     # Now we don't care about the layers after the style and content losses. So we remove them
-    for i in range(len(model) - 1, -1 , -1):
+    for i in range(len(model) - 1, -1, -1):
         if isinstance(model[i], ContentLoss) or isinstance(model[i], StyleLoss):
             break
-    
+
     model = model[:i+1]
 
     return model, style_losses, content_losses
 
 
-
 input_image = content_image.clone()
+
 
 def get_input_optimizer(input_image):
     optimizer = optim.LBFGS([input_image.requires_grad_()])
     return optimizer
 
 
-def run_style_transfer(model, style_losses, content_losses, input_image, 
-                        num_steps=300, style_weight=1000000, content_weight=1):
-    
+def run_style_transfer(model, style_losses, content_losses, input_image,
+                       num_steps=300, style_weight=1000000, content_weight=1):
+
     optimizer = get_input_optimizer(input_image)
 
     print("Optimizing...")
+
     run = [0]
 
     while(run[0] <= num_steps):
@@ -196,13 +218,13 @@ def run_style_transfer(model, style_losses, content_losses, input_image,
 
             optimizer.zero_grad()
             model(input_image)
-            
+
             style_score = 0
             content_score = 0
 
             for style_layer in style_losses:
                 style_score += (1/5)*style_layer.loss
-            
+
             for content_layer in content_losses:
                 content_score += content_layer.loss
 
@@ -213,27 +235,31 @@ def run_style_transfer(model, style_losses, content_losses, input_image,
             loss.backward()
 
             run[0] += 1
-            if run[0]%50 == 0:
+            val = math.floor((run[0]//num_steps)*100)
+            latest_iteration.text(f'Optimizing {val}')
+            bar.progress(val)
+            if run[0] % 50 == 0:
                 print("run {}:".format(run[0]))
-                print("Style loss : {:4f}, Content Loss : {:4f}".format(style_score.item(), content_score.item()))
+                print("Style loss : {:4f}, Content Loss : {:4f}".format(
+                    style_score.item(), content_score.item()))
                 print()
 
             return style_score+content_score
-        
+
         optimizer.step(closure)
-    
+
     input_image.data.clamp_(0, 1)
 
     return input_image
 
 
-
 print("Building the style transfer model...")
 
-model, style_losses, content_losses = get_style_model_and_losses(cnn, cnn_normalization_mean, cnn_normalization_std, style_image, content_image)
+model, style_losses, content_losses = get_style_model_and_losses(
+    cnn, cnn_normalization_mean, cnn_normalization_std, style_image, content_image)
 
-output = run_style_transfer(model, style_losses, content_losses, input_image, num_steps=400)
+output = run_style_transfer(
+    model, style_losses, content_losses, input_image, num_steps=50)
 
 
 imshow(output, title="Final image")
-
