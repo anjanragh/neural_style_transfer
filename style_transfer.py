@@ -36,7 +36,7 @@ def image_loader(image_name):
 # Store info about the images. We need two images, one for style and the other for content.
 image_dir = Path("./images")
 style_image = image_loader(image_dir/'starry.jpg')
-content_image = image_loader(image_dir/'anjan.JPG')
+content_image = image_loader(image_dir/'nyc.jpg')
 
 assert style_image.size() == content_image.size()
 
@@ -232,7 +232,7 @@ print("Building the style transfer model...")
 
 model, style_losses, content_losses = get_style_model_and_losses(cnn, cnn_normalization_mean, cnn_normalization_std, style_image, content_image)
 
-output = run_style_transfer(model, style_losses, content_losses, input_image, num_steps=300)
+output = run_style_transfer(model, style_losses, content_losses, input_image, num_steps=400)
 
 
 imshow(output, title="Final image")
