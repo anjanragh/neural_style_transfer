@@ -1,4 +1,4 @@
-torchvision==0.6.0a0+35d732a
+torchvision==0.6.0
 torch==1.5.1
 streamlit==0.64.0
 numpy==1.18.1
