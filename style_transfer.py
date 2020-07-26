@@ -237,7 +237,6 @@ def run_style_transfer(model, style_losses, content_losses, input_image,
             run[0] += 1
             val = math.floor((run[0]//num_steps)*100)
             latest_iteration.text(f'Optimizing {val}')
-
             bar.progress(val)
             if run[0] % 50 == 0:
                 print("run {}:".format(run[0]))
