@@ -19,7 +19,7 @@ import numpy as np
 import math
 import streamlit as st
 
-st.title("Neural Style Transfer Demo!")
+st.title("Neural Style Transfer using PyTorch")
 st.set_option('deprecation.showfileUploaderEncoding', False)
 
 # Create device so that it uses cuda if available. If not, just use cpu
@@ -40,8 +40,9 @@ def image_loader(image_name):
     return image.to(device, torch.float)
 
 
-style_img = st.file_uploader("Choose an image...", type="jpg", key="style")
-content_img = st.file_uploader("Choose an image...", type="jpg", key="content")
+style_img = st.file_uploader("Choose a style image", type="jpg", key="style")
+content_img = st.file_uploader(
+    "Choose a content image", type="jpg", key="content")
 # if uploaded_file is not None:
 #     image = Image.open(uploaded_file)
 #     st.image(image, caption='Uploaded Image.', use_column_width=True)
@@ -57,7 +58,8 @@ if style_img is not None and content_img is not None:
     content_image = image_loader(content_img)
 
     assert style_image.size() == content_image.size()
-
+    latest_iteration = st.empty()
+    bar = st.progress(0)
     # To convert from tensor to image, we need to create an unloader
     unloader = transforms.ToPILImage()
 
@@ -206,13 +208,11 @@ if style_img is not None and content_img is not None:
 
         print("Optimizing...")
         # Add a placeholder
-        latest_iteration = st.empty()
-        bar = st.progress(0)
 
         run = [0]
 
         while(run[0] <= num_steps):
-            val = math.floor((run[0]//num_steps)*100)
+            val = math.floor((run[0]/num_steps)*100)
             latest_iteration.text(f'Optimizing {val}')
             bar.progress(val)
 
